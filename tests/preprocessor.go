@@ -1,14 +1,14 @@
 package main
 
 import (
-  "org-mode"
-  "org-mode/export"
-  "fmt"
+	"fmt"
+	"org-mode"
+	"org-mode/export"
 )
 
 func main() {
 
-  example := `
+	example := `
   #+title: hello world
 
   #+options: todo:t ^:nil
@@ -18,7 +18,7 @@ func main() {
   Then any kind of text.
 
   `
-  
-  org := orgmode.Preprocess(example)
-  fmt.Println(orgexport.ToSexp(org))
+
+	org := orgmode.Preprocess(example)
+	fmt.Println(orgexport.ToSexp(org))
 }
