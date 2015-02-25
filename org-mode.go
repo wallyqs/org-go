@@ -266,7 +266,7 @@ func parseHeaderArguments(headerArgs string) map[string]string {
 				hargs[keyword] = value
 			}
 
-			// TODO: match when we are done
+		// TODO: match when we are done
 		case LF, NUL:
 			switch state {
 			case ORG_HEADER_ARGUMENT_VALUE_BEGIN:
@@ -497,7 +497,7 @@ func Parse(tokens []interface{}, currentOrgElement interface{}) interface{} {
 				currentOrgElement = ne
 			}
 
-			// section elements
+		// section elements
 		case *OrgParagraph:
 			// (section) -> paragraph | block | headline
 			switch ne := nextToken.(type) {
