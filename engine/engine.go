@@ -7,6 +7,10 @@ import (
 	"sync"
 	"github.com/wallyqs/org-go/parser"
 	"github.com/apcera/logray"
+
+	// mesos deps
+	mesosexec "github.com/mesos/mesos-go/executor"
+	mesos "github.com/mesos/mesos-go/mesosproto"
 )
 
 type CodeBlock struct {
@@ -21,6 +25,7 @@ type Engine struct {
 	CodeBlocks []*CodeBlock
 	wg *sync.WaitGroup
 	log *logray.Logger
+	blocksExecuted int
 }
 
 func NewEngine(mode string, data []byte) *Engine {
@@ -82,19 +87,20 @@ func (e *Engine) Run () {
 		// TODO: Only activate stdout when ':results output' in the future
 		logray.AddDefaultOutput("stdout://", logray.ALL)
 		e.log = logray.New()
-		e.log.Infof("Starting Executor engine in '%s' mode...\n", e.Mode)		
-		
+		e.log.Info("Running code blocks locally...")
 		e.RunLocally()
 
 	case "mesos":
-		// TODO: Run locally as a Mesos executor
-		e.log.Error("Not implemented yet...")
-		break
+		// TODO: Run locally as a Mesos executor and use proper fields
+		logray.AddDefaultOutput("stdout://", logray.ALL)
+		e.log = logray.New()
+		e.log.Info("Running as a Mesos Executor...")
+		e.RunAsMesosExecutor()
 
 	default:
 		e.log.Error("Unrecognized mode:", e.Mode)
-		break
 	}
+
 }
 
 func (e *Engine) ExecuteCodeBlock(block *CodeBlock) (bool, error) {
@@ -142,3 +148,63 @@ func (e *Engine) RunLocally() {
 	}
 	e.wg.Wait()
 }
+
+func (e *Engine) RunAsMesosExecutor() {
+	dconfig := mesosexec.DriverConfig{
+		Executor: e,
+	}
+
+	driver, err := mesosexec.NewMesosExecutorDriver(dconfig)
+	if err != nil {
+		e.log.Error("Unable to create a ExecutorDriver ", err.Error())
+	}
+
+	_, err = driver.Start()
+	if err != nil {
+		e.log.Error("Got error:", err)
+		return
+	}
+	e.log.Info("Executor process has started and running.")
+	driver.Join()
+}
+
+func (e *Engine) LaunchTask(driver mesosexec.ExecutorDriver, taskInfo *mesos.TaskInfo) {
+	e.log.Infof("Starting execution plan: '%s'\n", taskInfo.GetName())
+
+	e.wg.Add(len(e.CodeBlocks))
+	for _, block := range e.CodeBlocks {
+		go e.ExecuteCodeBlock(block)
+	}
+
+	// Report as running
+	status := &mesos.TaskStatus{
+		TaskId: taskInfo.GetTaskId(),
+		State:  mesos.TaskState_TASK_RUNNING.Enum(),
+	}
+	_, err := driver.SendStatusUpdate(status)
+	if err != nil {
+		e.log.Error("Got error: ", err)
+	}
+	
+	e.wg.Wait()
+
+	// Report as done
+	doneStatus := &mesos.TaskStatus{
+		TaskId: taskInfo.GetTaskId(),
+		State:  mesos.TaskState_TASK_FINISHED.Enum(),
+	}
+	_, err = driver.SendStatusUpdate(doneStatus)
+	if err != nil {
+		e.log.Error("Got error", err)
+	}	
+	e.log.Info("Execution plan is done.")
+}
+func (e *Engine) Registered(driver mesosexec.ExecutorDriver, execInfo *mesos.ExecutorInfo, fwinfo *mesos.FrameworkInfo, slaveInfo *mesos.SlaveInfo) {
+	e.log.Info("Registered with Mesos Master...")
+}
+func (e *Engine) Reregistered(driver mesosexec.ExecutorDriver, slaveInfo *mesos.SlaveInfo) {}
+func (e *Engine) Disconnected(mesosexec.ExecutorDriver) {}
+func (e *Engine) KillTask(mesosexec.ExecutorDriver, *mesos.TaskID) {}
+func (e *Engine) FrameworkMessage(driver mesosexec.ExecutorDriver, msg string) {}
+func (e *Engine) Shutdown(mesosexec.ExecutorDriver) {}
+func (e *Engine) Error(driver mesosexec.ExecutorDriver, err string) {}
