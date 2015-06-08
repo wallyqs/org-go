@@ -68,12 +68,13 @@ func main() {
         case "run", "r":
 	        if *mode == "" {
 		        c.SetupEngine("local", data)
-			c.StartEngine()
+		} else if os.Getenv("MESOS_SLAVE_PID") != "" {
+			c.SetupEngine("mesos", data)
 		} else {
 			c.SetupEngine(*mode, data)
-			c.StartEngine()
 		}
 
+		c.StartEngine()
 		os.Exit(0)
 	case "help", "h":
 		cli.ShowUsage()
